@@ -29,13 +29,17 @@ DATABASE_URL="postgresql://postgres.abcdefgh:MyPassword123@aws-0-us-east-1.poole
 
 > `.env` is in `.gitignore`. **Never commit it to GitHub**, because it contains your password.
 
-### 3. Install, create the table, and run
+### 3. Install, create the tables, add the colors, and run
 
 ```bash
 npm install
-npx prisma migrate dev --name init
+npx prisma migrate dev
+npm run db:seed
 npm start
 ```
+
+- `migrate dev` creates the `Person`, `Color`, and `PersonColor` tables
+- `db:seed` fills the `Color` table with the 7 rainbow colors (used by the [relational example](#relational-example-color--personcolor))
 
 Open http://localhost:3000 and add a few colors, then click **Dashboard**.
 
@@ -47,12 +51,15 @@ Open http://localhost:3000 and add a few colors, then click **Dashboard**.
 expresssupaprisma/
 ├── app.js               # Database connection, Express app, and all the routes
 ├── prisma/
-│   ├── schema.prisma    # The Person model (your table)
+│   ├── schema.prisma    # Person, Color, and PersonColor models (your tables)
+│   ├── seed.js          # Fills the Color table with the rainbow colors
 │   └── migrations/      # Created by "prisma migrate dev" - commit this folder
 ├── prisma.config.js     # Tells the Prisma CLI where the schema + database are
 ├── views/
 │   ├── index.hbs        # The form
 │   ├── dashboard.hbs    # Chart + rainbow + people list
+│   ├── relational-index.hbs      # Relational form (colors from the Color table)
+│   ├── relational-dashboard.hbs  # Relational dashboard
 │   ├── layout.hbs       # Page wrapper used by every view
 │   └── partials/        # Header (nav links) and footer
 ├── public/stylesheets/style.css
@@ -212,11 +219,118 @@ for (let band of colorData) {
 
 ---
 
+## Relational Example: Color + PersonColor
+
+The first example stores the color as text (`"blue"`) in every `Person` row. The relational example splits the data into **two tables** linked by a **foreign key**. The original `Person` example is unchanged, and both run side by side.
+
+```
+┌──────────────────────┐          ┌──────────────────────────┐
+│ Color                │          │ PersonColor              │
+├──────────────────────┤          ├──────────────────────────┤
+│ id    (PK)           │◄────┐    │ id        (PK)           │
+│ name  "red"          │     └────│ colorId   (FK → Color.id)│
+│ hex   "#FF0000"      │   1 : N  │ name                     │
+└──────────────────────┘          │ createdAt                │
+                                  └──────────────────────────┘
+```
+
+**Color** (filled in once by `npm run db:seed`)
+
+| id | name   | hex     |
+|----|--------|---------|
+| 1  | red    | #FF0000 |
+| 5  | blue   | #0000FF |
+| …  | …      | …       |
+
+**PersonColor** (one row per form submission)
+
+| id | name  | colorId | means            |
+|----|-------|---------|------------------|
+| 1  | Ana   | 5       | Ana likes blue   |
+| 2  | Ben   | 1       | Ben likes red    |
+| 3  | Carla | 5       | Carla likes blue |
+
+### Key ideas
+
+- **Primary key (PK):** `id` uniquely identifies each row.
+- **Foreign key (FK):** `PersonColor.colorId` stores the `id` of a row in `Color`, not the color's name.
+- **One-to-many:** one color (blue) can have many people (Ana, Carla). Each person has exactly one color.
+- **No repeated data:** each color's name and hex code is stored once. Change it in one place and every linked person sees the change.
+- **Integrity:** the database won't allow a `colorId` that doesn't exist in `Color`, and it won't let you delete a color that people still point to.
+
+### The models
+
+```prisma
+model Color {
+  id     Int           @id @default(autoincrement())
+  name   String        @unique
+  hex    String
+  people PersonColor[] // all the people who picked this color (not a real column)
+}
+
+model PersonColor {
+  id        Int      @id @default(autoincrement())
+  name      String
+  colorId   Int      // foreign key: stores the id of a Color
+  color     Color    @relation(fields: [colorId], references: [id])
+  createdAt DateTime @default(now())
+}
+```
+
+- `colorId` is the **real column** in the database.
+- `color` and `people` are **relation fields**. They aren't columns. Prisma uses them to follow the link in either direction.
+- `@relation(fields: [colorId], references: [id])` means "`PersonColor.colorId` matches `Color.id`".
+
+### The routes
+
+| Route | What it does |
+|---|---|
+| `GET /relational` | Loads colors from the `Color` table into the dropdown |
+| `POST /relational` | Saves a `PersonColor` with a `colorId` |
+| `GET /relational/dashboard` | Joins people to their color and counts people per color |
+| `POST /relational/people/:id/delete` | Deletes one `PersonColor` |
+
+### The dropdown sends an id, not a name
+
+```handlebars
+<option value="{{this.id}}">{{this.name}}</option>
+```
+
+```javascript
+await prisma.personColor.create({
+  data: { name: name, colorId: colorId }
+});
+```
+
+### Joining tables with `include`
+
+```javascript
+const people = await prisma.personColor.findMany({
+  include: { color: true }   // also get the linked Color row
+});
+// [{ id: 1, name: 'Ana', colorId: 5, color: { id: 5, name: 'blue', hex: '#0000FF' } }, ...]
+```
+
+In the template, follow the link with a dot: `{{this.color.name}}`, `{{this.color.hex}}`.
+
+### Counting with `_count` (no loop inside a loop)
+
+```javascript
+const colors = await prisma.color.findMany({
+  include: { _count: { select: { people: true } } }
+});
+// [{ id: 1, name: 'red', hex: '#FF0000', _count: { people: 3 } }, ...]
+```
+
+Compare this with the nested loop in the first example: here the database does the counting.
+
+---
+
 ## Deploying to Render
 
 1. Push to GitHub. Make sure `.env` is **not** in the repo and `prisma/migrations/` **is**.
 2. In Render, create a **Web Service** from your repo:
-   - **Build Command:** `npm install && npx prisma migrate deploy`
+   - **Build Command:** `npm install && npx prisma migrate deploy && npm run db:seed`
    - **Start Command:** `npm start`
 3. Under **Environment**, add `DATABASE_URL` with your Supabase connection string.
 
@@ -237,3 +351,5 @@ for (let band of colorData) {
 - Show the percentage for each color on the dashboard
 - Use `mouseX` in the p5 sketch to animate the rainbow
 - Add an **Edit** button that changes a person's color
+- Add a new color (like `pink`) to `prisma/seed.js`, run `npm run db:seed`, and watch it appear in the relational form
+- Try deleting a `Color` in Prisma Studio (`npm run db:studio`) that people still use. What happens, and why?

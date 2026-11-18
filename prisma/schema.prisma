@@ -17,3 +17,25 @@ model Person {
   color     String
   createdAt DateTime @default(now())
 }
+
+// ---------------------------------------------------------------
+// RELATIONAL EXAMPLE: two tables connected by a foreign key
+// One Color can have many PersonColor rows (one-to-many).
+// ---------------------------------------------------------------
+
+// One row for each rainbow color (filled in by prisma/seed.js)
+model Color {
+  id     Int           @id @default(autoincrement())
+  name   String        @unique
+  hex    String
+  people PersonColor[] // all the people who picked this color (not a real column)
+}
+
+// One row for each person, linked to a row in the Color table
+model PersonColor {
+  id        Int      @id @default(autoincrement())
+  name      String
+  colorId   Int      // foreign key: stores the id of a Color
+  color     Color    @relation(fields: [colorId], references: [id])
+  createdAt DateTime @default(now())
+}

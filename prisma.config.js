@@ -4,6 +4,9 @@ const { defineConfig, env } = require('prisma/config');
 
 module.exports = defineConfig({
   schema: 'prisma/schema.prisma',
-  migrations: { path: 'prisma/migrations' },
+  migrations: {
+    path: 'prisma/migrations',
+    seed: 'node prisma/seed.js', // used by "npx prisma db seed"
+  },
   datasource: { url: env('DATABASE_URL') },
 });
