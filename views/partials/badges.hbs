@@ -1,0 +1,174 @@
+<section class="badges-section" id="badges" aria-labelledby="badges-heading">
+  <h2 id="badges-heading">Badges</h2>
+  <p id="badges-summary" class="badges-summary" role="status" aria-live="polite">
+    Loading badge progress...
+  </p>
+  <div id="badge-grid" class="badge-grid" aria-busy="true"></div>
+</section>
+
+<script>
+  (function () {
+    const countryData = {{{countryCountsJSON}}};
+    const continentNames = [
+      'Africa',
+      'Asia',
+      'Europe',
+      'North America',
+      'Oceania',
+      'South America',
+      'Antarctica'
+    ];
+    const badgeGrid = document.getElementById('badge-grid');
+    const badgeSummary = document.getElementById('badges-summary');
+    let unlockedBadges = 0;
+    let badgeCount = 0;
+
+    function addBadge(title, description, state, progress) {
+      const card = document.createElement('article');
+      card.className = 'badge-card badge-card-' + state;
+      const medallion = document.createElement('span');
+      medallion.className = 'badge-medallion';
+      medallion.setAttribute('aria-hidden', 'true');
+      medallion.textContent = '★';
+      const content = document.createElement('div');
+      const heading = document.createElement('h3');
+      heading.textContent = title;
+      const detail = document.createElement('p');
+      detail.textContent = description;
+      const stateText = document.createElement('span');
+      stateText.className = 'badge-state';
+      stateText.textContent = state === 'unlocked'
+        ? 'Unlocked'
+        : state === 'unavailable' ? 'Unavailable' : 'Locked';
+
+      content.append(heading, detail);
+      if (progress) {
+        const progressText = document.createElement('p');
+        progressText.className = 'badge-progress';
+        progressText.textContent = progress;
+        content.append(progressText);
+      }
+      content.append(stateText);
+      card.append(medallion, content);
+      badgeGrid.append(card);
+      badgeCount++;
+      if (state === 'unlocked') {
+        unlockedBadges++;
+      }
+    }
+
+    function updateSummary(message) {
+      badgeSummary.textContent =
+        unlockedBadges + ' of ' + badgeCount + ' badges unlocked.' +
+        (message ? ' ' + message : '');
+    }
+
+    const visitedCountries = countryData.filter(country => country.visits > 0).length;
+    const totalCountries = countryData.length;
+    const countryMilestones = [
+      { title: 'First Steps', threshold: 1 },
+      { title: '10 Countries', threshold: 10 },
+      { title: '15 Countries', threshold: 15 },
+      { title: '25 Countries', threshold: 25 },
+      { title: '50 Countries', threshold: 50 },
+      { title: '100 Countries', threshold: 100 }
+    ];
+
+    for (const milestone of countryMilestones) {
+      const unlocked = totalCountries > 0 && visitedCountries >= milestone.threshold;
+      addBadge(
+        milestone.title,
+        milestone.threshold === 1
+          ? 'Record your first country visit.'
+          : 'Visit ' + milestone.threshold + ` different countries.',
+        unlocked ? 'unlocked' : 'locked',
+        Math.min(visitedCountries, milestone.threshold) + ' / ' +
+          milestone.threshold + ' ' + (milestone.threshold === 1 ? 'country' : 'countries')
+      );
+    }
+
+    addBadge(
+      'World Explorer',
+      'Visit every destination in the country list.',
+      totalCountries > 0 && visitedCountries === totalCountries ? 'unlocked' : 'locked',
+      visitedCountries + ' / ' + totalCountries + ' countries'
+    );
+
+    function renderContinentBadges(world) {
+      const countryByCode = new Map(countryData.map(country => [country.code, country]));
+      const continentByCode = new Map();
+      for (const feature of world.features) {
+        const properties = feature.properties || {};
+        const candidates = [properties.ISO_A3, properties.ADM0_A3, properties.SOV_A3];
+        const code = candidates.find(candidate => countryByCode.has(candidate));
+        const continent = properties.CONTINENT === 'Seven seas (open ocean)'
+          ? properties.REGION_UN
+          : properties.CONTINENT;
+        if (code && continent) {
+          continentByCode.set(code, continent);
+        }
+      }
+
+      const totals = new Map(
+        continentNames.map(continent => [continent, { visited: 0, total: 0 }])
+      );
+      for (const country of countryData) {
+        const continent = continentByCode.get(country.code);
+        if (!totals.has(continent)) {
+          throw new Error('No supported continent found for ' + country.name + '.');
+        }
+        const continentTotal = totals.get(continent);
+        continentTotal.total++;
+        if (country.visits > 0) {
+          continentTotal.visited++;
+        }
+      }
+
+      let unlockedContinents = 0;
+      for (const continent of continentNames) {
+        const continentTotal = totals.get(continent);
+        const unlocked = continentTotal.visited > 0;
+        if (unlocked) {
+          unlockedContinents++;
+        }
+        addBadge(
+          continent,
+          continent === 'Antarctica'
+            ? 'Record a visit to Antarctica.'
+            : 'Record a visit to a country in ' + continent + '.',
+          unlocked ? 'unlocked' : 'locked'
+        );
+      }
+
+      addBadge(
+        'Seven Continents',
+        'Unlock a badge for every continent.',
+        unlockedContinents === continentNames.length ? 'unlocked' : 'locked'
+      );
+      badgeGrid.setAttribute('aria-busy', 'false');
+      updateSummary();
+    }
+
+    window.countryGeographyPromise
+      .then(renderContinentBadges)
+      .catch(function (error) {
+        for (const continent of continentNames) {
+          addBadge(
+            continent,
+            continent === 'Antarctica'
+              ? 'Record a visit to Antarctica.'
+              : 'Record a visit to a country in ' + continent + '.',
+            'unavailable'
+          );
+        }
+        addBadge(
+          'Seven Continents',
+          'Unlock a badge for every continent.',
+          'unavailable'
+        );
+        badgeGrid.setAttribute('aria-busy', 'false');
+        updateSummary('Continent badges could not be loaded. Refresh the page to try again.');
+        console.error('Unable to load continent badge progress.', error);
+      });
+  })();
+</script>

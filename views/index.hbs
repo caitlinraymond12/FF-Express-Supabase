@@ -1,16 +1,706 @@
-<h1>What's your favorite color?</h1>
 
-<form action="/" method="post">
-  <label for="name">Name</label>
-  <input type="text" id="name" name="name" required>
+{{#if submitted}}
+  <section class="welcome-section" aria-labelledby="welcome-heading">
+    <h2 id="welcome-heading">Welcome, {{person.name}}!</h2>
+    <p>Your response has been saved. Visit your personalized dashboard any time.</p>
+    <a class="personal-dashboard-link" href="/dashboard/{{person.dashboardToken}}">Open your dashboard</a>
+    <p class="refresh-hint">To submit another response, refresh this page.</p>
+  </section>
+{{/if}}
 
-  <label for="color">Favorite color</label>
-  <select id="color" name="color" required>
-    <option value="">Choose a color</option>
-    {{#each colors}}
-      <option value="{{this}}">{{this}}</option>
-    {{/each}}
-  </select>
+<form id="country-form" action="/" method="post" {{#if submitted}}hidden{{/if}}>
+  <div class="form-row">
+    <div class="form-row-person">
+      <div class="form-field">
+        <label for="name">Name</label>
+        <input type="text" id="name" name="name" required>
+      </div>
 
-  <button type="submit">Submit</button>
+      <div class="form-field age-picker" id="age-picker">
+        <label for="age">Age</label>
+        <div class="age-input-wrap">
+          <input
+            type="number"
+            id="age"
+            name="age"
+            min="0"
+            max="100"
+            step="1"
+            aria-controls="age-options"
+            aria-expanded="false"
+            required>
+          <div id="age-options" class="age-options" role="listbox" aria-label="Available ages" hidden>
+            {{#each ageOptions}}
+              <button type="button" class="age-option" data-age="{{this}}">{{this}}</button>
+            {{/each}}
+            <p id="no-age-matches" hidden>No preset ages match. You can type any age from 0 to 100.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-row-countries">
+      <div class="form-field country-picker" id="visited-country-picker">
+        <label for="visited-country-search">Countries visited</label>
+        <div class="country-input-wrap">
+          <div class="country-selection-input" id="visited-country-selection-input">
+            <div id="selected-visited-countries" class="selected-countries" aria-live="polite"></div>
+            <input
+              type="search"
+              id="visited-country-search"
+              autocomplete="off"
+              aria-controls="visited-country-options"
+              aria-expanded="false">
+          </div>
+          <div id="visited-country-options" class="country-options" role="group" aria-label="Countries visited options" hidden>
+            {{#each countries}}
+              <div class="country-option" data-country-name="{{this.name}}">
+                <input type="checkbox" name="visitedCountryCodes" value="{{this.code}}" data-country-name="{{this.name}}" aria-label="Select {{this.name}} as visited">
+                <span>{{this.name}}</span>
+              </div>
+            {{else}}
+              <p>No countries are loaded. Run <code>npm run db:seed</code>.</p>
+            {{/each}}
+            <p id="no-visited-country-matches" hidden>No matching countries.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-field country-picker" id="wanted-country-picker">
+        <label for="wanted-country-search">Want to visit</label>
+        <div class="country-input-wrap">
+          <div class="country-selection-input" id="wanted-country-selection-input">
+            <div id="selected-wanted-countries" class="selected-countries" aria-live="polite"></div>
+            <input
+              type="search"
+              id="wanted-country-search"
+              autocomplete="off"
+              aria-controls="wanted-country-options"
+              aria-expanded="false">
+          </div>
+          <div id="wanted-country-options" class="country-options" role="group" aria-label="Want to visit country options" hidden>
+            {{#each countries}}
+              <div class="country-option" data-country-name="{{this.name}}">
+                <input type="checkbox" name="wantedCountryCodes" value="{{this.code}}" data-country-name="{{this.name}}" aria-label="Select {{this.name}} as a place to visit">
+                <span>{{this.name}}</span>
+              </div>
+            {{else}}
+              <p>No countries are loaded. Run <code>npm run db:seed</code>.</p>
+            {{/each}}
+            <p id="no-wanted-country-matches" hidden>No matching countries.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button type="submit" {{#unless countries.length}}disabled{{/unless}}>Submit</button>
 </form>
+
+{{#if submitted}}
+  <script>
+    (function () {
+      const performance = window.performance;
+      if (!performance || typeof performance.getEntriesByType !== 'function') {
+        return;
+      }
+
+      const navigation = performance.getEntriesByType('navigation')[0];
+      if (navigation && navigation.type === 'reload') {
+        document.getElementById('country-form').hidden = false;
+      }
+    })();
+  </script>
+{{/if}}
+
+<section class="world-map-section" id="world-map-section" aria-labelledby="world-map-heading">
+  <h2 id="world-map-heading">Countries visited</h2>
+  <div class="map-mode-toggle" role="group" aria-label="Map data to display">
+    <button type="button" class="map-mode-button map-mode-button-active" data-map-mode="visited" aria-pressed="true">Visited</button>
+    <button type="button" class="map-mode-button" data-map-mode="wanted" aria-pressed="false">Want to visit</button>
+  </div>
+  <div class="world-map-layout" id="world-map-layout">
+    <div class="world-map-main">
+      <div class="world-map-container">
+        <svg id="world-map" viewBox="0 0 1000 500" role="img" aria-label="World map showing countries people have visited">
+          <g id="world-map-layer"></g>
+        </svg>
+      </div>
+      <div class="map-legend" aria-label="People count for the selected map">
+        <span id="map-legend-start">1 person</span>
+        <span id="map-legend-gradient"></span>
+        <span id="map-legend-maximum">0 people</span>
+      </div>
+      <p id="map-status" class="map-status" role="status"></p>
+      <small>Click a country to add it to the active list. Map boundaries: Natural Earth (public domain).</small>
+    </div>
+    <aside class="country-facts-panel" id="country-facts-panel" aria-live="polite" aria-label="Country facts">
+      <div class="country-facts-placeholder" id="country-facts-placeholder">
+        <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+          <circle cx="24" cy="24" r="19"></circle>
+          <ellipse cx="24" cy="24" rx="8" ry="19"></ellipse>
+          <path d="M5 24h38M9 14h30M9 34h30"></path>
+        </svg>
+        <p>Hover over a country</p>
+      </div>
+      <h3 id="country-facts-name" hidden></h3>
+      <p id="country-facts-status" hidden></p>
+      <dl id="country-facts-list"></dl>
+      <small class="country-facts-note" id="country-facts-note" hidden>Area is estimated from map boundaries. Population is an estimate.</small>
+    </aside>
+  </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script>
+  const countryCounts = {{{countryCountsJSON}}};
+  const countryByCode = new Map(countryCounts.map(country => [country.code, country]));
+  const agePicker = document.getElementById('age-picker');
+  const ageInput = document.getElementById('age');
+  const ageOptionsList = document.getElementById('age-options');
+  const ageOptions = Array.from(document.querySelectorAll('.age-option'));
+  const noAgeMatches = document.getElementById('no-age-matches');
+  const countryPickers = [
+    {
+      mode: 'visited',
+      inputName: 'visitedCountryCodes',
+      root: document.getElementById('visited-country-picker'),
+      selectionInput: document.getElementById('visited-country-selection-input'),
+      search: document.getElementById('visited-country-search'),
+      optionsList: document.getElementById('visited-country-options'),
+      noMatches: document.getElementById('no-visited-country-matches'),
+      selected: document.getElementById('selected-visited-countries'),
+      options: Array.from(document.querySelectorAll('#visited-country-options .country-option'))
+    },
+    {
+      mode: 'wanted',
+      inputName: 'wantedCountryCodes',
+      root: document.getElementById('wanted-country-picker'),
+      selectionInput: document.getElementById('wanted-country-selection-input'),
+      search: document.getElementById('wanted-country-search'),
+      optionsList: document.getElementById('wanted-country-options'),
+      noMatches: document.getElementById('no-wanted-country-matches'),
+      selected: document.getElementById('selected-wanted-countries'),
+      options: Array.from(document.querySelectorAll('#wanted-country-options .country-option'))
+    }
+  ];
+  const countryPickerByMode = new Map(countryPickers.map(picker => [picker.mode, picker]));
+  const countryCheckboxesByMode = new Map(
+    countryPickers.map(picker => [
+      picker.mode,
+      new Map(picker.options.map(option => {
+        const checkbox = option.querySelector('input[name="' + picker.inputName + '"]');
+        return [checkbox.value, checkbox];
+      }))
+    ])
+  );
+  const mapModeButtons = Array.from(document.querySelectorAll('.map-mode-button'));
+  const mapModeConfig = {
+    visited: {
+      countProperty: 'visits',
+      heading: 'Countries visited',
+      ariaLabel: 'World map showing countries people have visited'
+    },
+    wanted: {
+      countProperty: 'wants',
+      heading: 'Countries people want to visit',
+      ariaLabel: 'World map showing countries people want to visit'
+    }
+  };
+  const mapStatus = document.getElementById('map-status');
+  const worldMapSection = document.getElementById('world-map-section');
+  const worldMapHeading = document.getElementById('world-map-heading');
+  const worldMap = document.getElementById('world-map');
+  const mapLegendGradient = document.getElementById('map-legend-gradient');
+  const mapLegendMaximum = document.getElementById('map-legend-maximum');
+  const countryFactsPanel = document.getElementById('country-facts-panel');
+  const countryFactsPlaceholder = document.getElementById('country-facts-placeholder');
+  const countryFactsName = document.getElementById('country-facts-name');
+  const countryFactsStatus = document.getElementById('country-facts-status');
+  const countryFactsList = document.getElementById('country-facts-list');
+  const countryFactsNote = document.getElementById('country-facts-note');
+  let mapPaths = null;
+  let mapColorScales = null;
+  let activeMapMode = 'visited';
+  let countryFactsByCode = null;
+  let countryFactsLoadError = false;
+  let activeCountryFeature = null;
+  let keepAgeInputFocused = false;
+
+  function hideCountryFacts() {
+    activeCountryFeature = null;
+    countryFactsPlaceholder.hidden = false;
+    countryFactsName.textContent = '';
+    countryFactsName.hidden = true;
+    countryFactsStatus.textContent = '';
+    countryFactsStatus.hidden = true;
+    countryFactsList.replaceChildren();
+    countryFactsNote.hidden = true;
+  }
+
+  function updateMapSelection() {
+    if (!mapPaths) {
+      return;
+    }
+
+    const selectedCodes = new Set(
+      Array.from(countryCheckboxesByMode.get(activeMapMode).values())
+        .filter(checkbox => checkbox.checked)
+        .map(checkbox => checkbox.value)
+    );
+    mapPaths.classed('country-shape-selected', feature => selectedCodes.has(feature.countryCode));
+  }
+
+  function selectCountryByCode(code) {
+    const checkbox = countryCheckboxesByMode.get(activeMapMode).get(code);
+    if (!checkbox) {
+      console.error('No country checkbox exists for map country ' + code + '.');
+      return;
+    }
+
+    checkbox.checked = !checkbox.checked;
+    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function getMapFill(feature) {
+    if (!feature.countryCode) {
+      return '#c1c9b9';
+    }
+
+    const country = countryByCode.get(feature.countryCode);
+    const count = country[mapModeConfig[activeMapMode].countProperty] || 0;
+    return count > 0 ? mapColorScales[activeMapMode](count) : '#d5ddce';
+  }
+
+  function updateMapDisplay() {
+    const mode = mapModeConfig[activeMapMode];
+    const maximumCount = Math.max(
+      0,
+      ...countryCounts.map(country => country[mode.countProperty] || 0)
+    );
+    worldMapHeading.textContent = mode.heading;
+    worldMap.setAttribute('aria-label', mode.ariaLabel);
+    mapLegendMaximum.textContent = maximumCount + (maximumCount === 1 ? ' person' : ' people');
+    for (const button of mapModeButtons) {
+      const selected = button.dataset.mapMode === activeMapMode;
+      button.setAttribute('aria-pressed', String(selected));
+      button.classList.toggle('map-mode-button-active', selected);
+    }
+
+    if (!mapColorScales) {
+      return;
+    }
+
+    const colorScale = mapColorScales[activeMapMode];
+    colorScale.domain([1, Math.max(1, maximumCount)]);
+    mapLegendGradient.style.background = maximumCount
+      ? 'linear-gradient(to right, ' + colorScale(1) + ', ' + colorScale(maximumCount) + ')'
+      : '#d5ddce';
+    if (mapPaths) {
+      mapPaths
+        .attr('fill', getMapFill)
+        .select('title')
+        .text(function (feature) {
+          if (!feature.countryCode) {
+            return 'Antarctica: Run npm run db:seed and refresh to enable visit tracking.';
+          }
+          const country = countryByCode.get(feature.countryCode);
+          const count = country[mode.countProperty] || 0;
+          const noun = count === 1 ? 'person' : 'people';
+          const verb = activeMapMode === 'visited'
+            ? count === 1 ? 'has visited' : 'have visited'
+            : count === 1 ? 'wants to visit' : 'want to visit';
+          return country.name + ': ' + count + ' ' + noun + ' ' + verb;
+        });
+    }
+    updateMapSelection();
+  }
+
+  for (const button of mapModeButtons) {
+    button.addEventListener('click', function () {
+      activeMapMode = button.dataset.mapMode;
+      updateMapDisplay();
+    });
+  }
+
+  updateMapDisplay();
+
+  function renderCountryFacts(feature) {
+    activeCountryFeature = feature;
+    countryFactsPlaceholder.hidden = true;
+
+    const country = countryByCode.get(feature.countryCode);
+    countryFactsName.textContent = country.name;
+    countryFactsName.hidden = false;
+    countryFactsStatus.hidden = false;
+    countryFactsList.replaceChildren();
+
+    if (countryFactsByCode === null) {
+      countryFactsStatus.textContent = 'Loading country facts...';
+      return;
+    }
+
+    if (countryFactsLoadError) {
+      countryFactsStatus.textContent = 'Country facts could not be loaded. Refresh the page to try again.';
+      return;
+    }
+
+    const facts = countryFactsByCode[feature.countryCode];
+    if (!facts) {
+      countryFactsStatus.textContent = 'Facts for this country are not available.';
+      return;
+    }
+
+    countryFactsStatus.textContent = '';
+    countryFactsNote.hidden = false;
+    const properties = feature.properties || {};
+    const continent = properties.CONTINENT === 'Seven seas (open ocean)'
+      ? properties.REGION_UN
+      : properties.CONTINENT;
+
+    function addFact(label, value) {
+      if (!value) {
+        return;
+      }
+
+      const term = document.createElement('dt');
+      term.textContent = label;
+      const description = document.createElement('dd');
+      description.textContent = value;
+      countryFactsList.append(term, description);
+    }
+
+    const population = Number(properties.POP_EST);
+    const area = d3.geoArea(feature) * Math.pow(6371.0088, 2);
+    addFact('Capital', facts.capital);
+    addFact('Continent', continent);
+    addFact(
+      'Population estimate',
+      Number.isFinite(population) && population > 0
+        ? Math.round(population).toLocaleString() + (properties.POP_YEAR ? ' (' + properties.POP_YEAR + ')' : '')
+        : ''
+    );
+    addFact(
+      'Approx. area',
+      Number.isFinite(area) && area > 0 ? Math.round(area).toLocaleString() + ' km²' : ''
+    );
+    addFact('Native name', facts.nativeName);
+    addFact('Languages', facts.languages.join(', '));
+    addFact('Currencies', facts.currencies.join(', '));
+    addFact(
+      'People who visited',
+      country.visits.toLocaleString() + (country.visits === 1 ? ' person' : ' people')
+    );
+    addFact(
+      'People who want to visit',
+      (country.wants || 0).toLocaleString() + (country.wants === 1 ? ' person' : ' people')
+    );
+  }
+
+  worldMapSection.addEventListener('pointerleave', hideCountryFacts);
+
+  function filterAgeOptions() {
+    const query = ageInput.value.trim();
+    let visibleCount = 0;
+    for (const option of ageOptions) {
+      option.hidden = !option.dataset.age.startsWith(query);
+      if (!option.hidden) {
+        visibleCount++;
+      }
+    }
+    noAgeMatches.hidden = ageOptions.length === 0 || visibleCount > 0;
+  }
+
+  function openAgeOptions() {
+    if (keepAgeInputFocused) {
+      return;
+    }
+    ageOptionsList.hidden = false;
+    ageInput.setAttribute('aria-expanded', 'true');
+    filterAgeOptions();
+  }
+
+  function closeAgeOptions() {
+    ageOptionsList.hidden = true;
+    ageInput.setAttribute('aria-expanded', 'false');
+  }
+
+  ageInput.addEventListener('focus', openAgeOptions);
+  ageInput.addEventListener('click', openAgeOptions);
+  ageInput.addEventListener('input', filterAgeOptions);
+  ageInput.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+      closeAgeOptions();
+    }
+  });
+  for (const option of ageOptions) {
+    option.addEventListener('click', function () {
+      ageInput.value = option.dataset.age;
+      closeAgeOptions();
+      keepAgeInputFocused = true;
+      ageInput.focus();
+      keepAgeInputFocused = false;
+    });
+  }
+  agePicker.addEventListener('focusout', function (event) {
+    if (
+      !keepAgeInputFocused &&
+      event.relatedTarget &&
+      event.relatedTarget !== document.body &&
+      !agePicker.contains(event.relatedTarget)
+    ) {
+      closeAgeOptions();
+    }
+  });
+
+  function filterCountries(picker) {
+    const query = picker.search.value.trim().toLowerCase();
+    let visibleCount = 0;
+    for (const option of picker.options) {
+      option.hidden = !option.dataset.countryName.toLowerCase().startsWith(query);
+      if (!option.hidden) {
+        visibleCount++;
+      }
+    }
+    picker.noMatches.hidden = picker.options.length === 0 || visibleCount > 0;
+  }
+
+  function openCountryOptions(picker) {
+    picker.optionsList.hidden = false;
+    picker.search.setAttribute('aria-expanded', 'true');
+    filterCountries(picker);
+  }
+
+  function closeCountryOptions(picker) {
+    picker.optionsList.hidden = true;
+    picker.search.setAttribute('aria-expanded', 'false');
+  }
+
+  function updateSelection(picker) {
+    const checked = Array.from(countryCheckboxesByMode.get(picker.mode).values())
+      .filter(checkbox => checkbox.checked);
+    picker.selected.replaceChildren();
+    picker.search.value = '';
+
+    for (const checkbox of checked) {
+      const chip = document.createElement('span');
+      chip.className = 'country-chip';
+      chip.append(document.createTextNode(checkbox.dataset.countryName + ' '));
+
+      const removeButton = document.createElement('button');
+      removeButton.type = 'button';
+      removeButton.className = 'country-chip-remove';
+      removeButton.textContent = '×';
+      removeButton.setAttribute('aria-label', 'Remove ' + checkbox.dataset.countryName);
+      removeButton.addEventListener('click', function () {
+        checkbox.checked = false;
+        updateSelection(picker);
+      });
+
+      chip.append(removeButton);
+      picker.selected.append(chip);
+    }
+
+    filterCountries(picker);
+    updateMapSelection();
+  }
+
+  document.addEventListener('click', function (event) {
+    if (!agePicker.contains(event.target)) {
+      closeAgeOptions();
+    }
+    for (const picker of countryPickers) {
+      if (!picker.root.contains(event.target)) {
+        closeCountryOptions(picker);
+      }
+    }
+  });
+
+  for (const picker of countryPickers) {
+    picker.search.addEventListener('focus', function () {
+      openCountryOptions(picker);
+    });
+    picker.search.addEventListener('click', function () {
+      openCountryOptions(picker);
+    });
+    picker.search.addEventListener('input', function () {
+      filterCountries(picker);
+    });
+    picker.search.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') {
+        closeCountryOptions(picker);
+      }
+    });
+    picker.selectionInput.addEventListener('click', function (event) {
+      if (event.target === picker.selectionInput) {
+        picker.search.focus();
+      }
+    });
+    picker.root.addEventListener('focusout', function (event) {
+      if (
+        event.relatedTarget &&
+        event.relatedTarget !== document.body &&
+        !picker.root.contains(event.relatedTarget)
+      ) {
+        closeCountryOptions(picker);
+      }
+    });
+
+    for (const option of picker.options) {
+      const checkbox = option.querySelector('input[name="' + picker.inputName + '"]');
+      checkbox.addEventListener('change', function () {
+        updateSelection(picker);
+      });
+      option.addEventListener('click', function (event) {
+        if (event.target === checkbox) {
+          return;
+        }
+
+        checkbox.checked = !checkbox.checked;
+        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    }
+
+    updateSelection(picker);
+  }
+
+  if (!window.d3) {
+    mapStatus.textContent = 'The map renderer could not be loaded. Check your connection and refresh.';
+    console.error('D3 could not be loaded from its CDN.');
+  } else if (countryByCode.size === 0) {
+    mapStatus.textContent = 'No countries are available. Run npm run db:seed and refresh.';
+  } else {
+    mapColorScales = {
+      visited: d3.scaleSequential()
+        .domain([1, 1])
+        .interpolator(d3.interpolateRgb('#87B2CC', '#144361')),
+      wanted: d3.scaleSequential()
+        .domain([1, 1])
+        .interpolator(d3.interpolateRgb('#dfb989', '#925535'))
+    };
+    updateMapDisplay();
+
+    function featureCountryCode(feature) {
+      const properties = feature.properties || {};
+      const candidates = [properties.ISO_A3, properties.ADM0_A3, properties.SOV_A3];
+      return candidates.find(code => countryByCode.has(code)) || null;
+    }
+
+    fetch('/country-facts.json')
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error('Country facts request failed with status ' + response.status);
+        }
+        return response.json();
+      })
+      .then(function (facts) {
+        countryFactsByCode = facts;
+        if (activeCountryFeature) {
+          renderCountryFacts(activeCountryFeature);
+        }
+      })
+      .catch(function (error) {
+        countryFactsByCode = {};
+        countryFactsLoadError = true;
+        if (activeCountryFeature) {
+          renderCountryFacts(activeCountryFeature);
+        }
+        console.error('Unable to load local country facts.', error);
+      });
+
+    d3.json('/countries.geojson')
+      .then(function (world) {
+        const features = world.features
+          .map(function (feature) {
+            return Object.assign({}, feature, { countryCode: featureCountryCode(feature) });
+          })
+          .filter(function (feature) {
+            return feature.countryCode || feature.properties.ADM0_A3 === 'ATA';
+          });
+
+        if (features.length === 0) {
+          throw new Error('No map shapes matched the country catalog.');
+        }
+
+        if (!countryByCode.has('ATA')) {
+          mapStatus.textContent =
+            'Antarctica is visible but not selectable yet. Run npm run db:seed and refresh to enable visit tracking.';
+        }
+
+        const collection = { type: 'FeatureCollection', features: features };
+        const projection = d3.geoNaturalEarth1()
+          .fitExtent([[8, 8], [992, 492]], collection);
+        const path = d3.geoPath(projection);
+
+        mapPaths = d3.select('#world-map-layer')
+          .selectAll('path')
+          .data(features)
+          .join('path')
+          .attr('class', function (feature) {
+            return feature.countryCode
+              ? 'country-shape'
+              : 'country-shape country-shape-unavailable';
+          })
+          .attr('data-country-code', feature => feature.countryCode)
+          .attr('tabindex', feature => feature.countryCode ? 0 : null)
+          .attr('role', feature => feature.countryCode ? 'button' : null)
+          .attr('aria-label', function (feature) {
+            if (!feature.countryCode) {
+              return 'Antarctica. Run npm run db:seed and refresh to enable visit tracking.';
+            }
+            const country = countryByCode.get(feature.countryCode);
+            return country.name + '. Click, press Enter, or press Space to select. Hover or focus to view country facts.';
+          })
+          .attr('d', path)
+          .attr('fill', getMapFill)
+          .attr('stroke', feature => feature.properties.ADM0_A3 === 'ATA' ? '#657257' : '#fbf8f0')
+          .attr('stroke-width', feature => feature.properties.ADM0_A3 === 'ATA' ? 0.8 : 0.4)
+          .on('pointerenter', function (event, feature) {
+            if (feature.countryCode) {
+              renderCountryFacts(feature);
+            }
+          })
+          .on('focus', function (event, feature) {
+            if (feature.countryCode) {
+              renderCountryFacts(feature);
+            }
+          })
+          .on('click', function (event, feature) {
+            if (feature.countryCode) {
+              selectCountryByCode(feature.countryCode);
+            }
+          })
+          .on('keydown', function (event, feature) {
+            if (feature.countryCode && (event.key === 'Enter' || event.key === ' ')) {
+              event.preventDefault();
+              selectCountryByCode(feature.countryCode);
+            }
+          });
+
+        updateMapSelection();
+
+        mapPaths.append('title').text(function (feature) {
+          if (!feature.countryCode) {
+            return 'Antarctica: Run npm run db:seed and refresh to enable visit tracking.';
+          }
+          const country = countryByCode.get(feature.countryCode);
+          const count = country[mapModeConfig[activeMapMode].countProperty] || 0;
+          const noun = count === 1 ? 'person' : 'people';
+          const verb = activeMapMode === 'visited'
+            ? count === 1 ? 'has visited' : 'have visited'
+            : count === 1 ? 'wants to visit' : 'want to visit';
+          return country.name + ': ' + count + ' ' + noun + ' ' + verb;
+        });
+        updateMapDisplay();
+      })
+      .catch(function (error) {
+        mapStatus.textContent = 'The map could not be loaded. Refresh the page to try again.';
+        console.error('Unable to render the local country map.', error);
+      });
+  }
+</script>
+
+<section class="dashboard-page-section" id="dashboard" aria-labelledby="dashboard-heading">
+  {{> dashboard}}
+</section>
+{{> badges}}

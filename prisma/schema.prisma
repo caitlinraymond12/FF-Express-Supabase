@@ -12,30 +12,41 @@ datasource db {
 
 // One row for each person who submits the form
 model Person {
-  id        Int      @id @default(autoincrement())
-  name      String
-  color     String
-  createdAt DateTime @default(now())
+  id              Int                  @id @default(autoincrement())
+  name            String
+  age             Int                  @default(16)
+  dashboardToken  String?              @unique
+  createdAt       DateTime             @default(now())
+  countries       PersonCountry[]
+  wantedCountries PersonWantCountry[]
 }
 
-// ---------------------------------------------------------------
-// RELATIONAL EXAMPLE: two tables connected by a foreign key
-// One Color can have many PersonColor rows (one-to-many).
-// ---------------------------------------------------------------
-
-// One row for each rainbow color (filled in by prisma/seed.js)
-model Color {
-  id     Int           @id @default(autoincrement())
-  name   String        @unique
-  hex    String
-  people PersonColor[] // all the people who picked this color (not a real column)
+// ISO 3166-1 alpha-3 codes identify countries consistently across the app and map.
+model Country {
+  id       Int                  @id @default(autoincrement())
+  code     String               @unique
+  name     String               @unique
+  people   PersonCountry[]
+  wantedBy PersonWantCountry[]
 }
 
-// One row for each person, linked to a row in the Color table
-model PersonColor {
-  id        Int      @id @default(autoincrement())
-  name      String
-  colorId   Int      // foreign key: stores the id of a Color
-  color     Color    @relation(fields: [colorId], references: [id])
-  createdAt DateTime @default(now())
+// A person can select many countries, and each country can be selected by many people.
+model PersonCountry {
+  personId  Int
+  countryId Int
+  person    Person  @relation(fields: [personId], references: [id], onDelete: Cascade)
+  country   Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+
+  @@id([personId, countryId])
+  @@index([countryId])
+}
+
+model PersonWantCountry {
+  personId  Int
+  countryId Int
+  person    Person  @relation(fields: [personId], references: [id], onDelete: Cascade)
+  country   Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+
+  @@id([personId, countryId])
+  @@index([countryId])
 }

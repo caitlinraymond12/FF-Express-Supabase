@@ -1,0 +1,31 @@
+<section class="personal-dashboard" aria-labelledby="personal-dashboard-heading">
+  <a class="return-home-link" href="/?person={{person.dashboardToken}}">Return to home</a>
+  <h1 id="personal-dashboard-heading">Welcome, {{person.name}}!</h1>
+  <p class="personal-dashboard-age">Age: {{person.age}}</p>
+
+  <div class="personal-dashboard-grid">
+    <section class="personal-dashboard-card" aria-labelledby="visited-heading">
+      <h2 id="visited-heading">Countries you've visited</h2>
+      <p class="personal-dashboard-count">{{person.countries.length}} countries</p>
+      <ul>
+        {{#each person.countries}}
+          <li>{{this.country.name}}</li>
+        {{else}}
+          <li>No countries added yet.</li>
+        {{/each}}
+      </ul>
+    </section>
+
+    <section class="personal-dashboard-card" aria-labelledby="wanted-heading">
+      <h2 id="wanted-heading">Countries you'd like to visit</h2>
+      <p class="personal-dashboard-count">{{person.wantedCountries.length}} countries</p>
+      <ul>
+        {{#each person.wantedCountries}}
+          <li>{{this.country.name}}</li>
+        {{else}}
+          <li>No countries added yet.</li>
+        {{/each}}
+      </ul>
+    </section>
+  </div>
+</section>

@@ -1,11 +1,12 @@
-# FF-Express-Supabase Example - Favorite Color
+# FF-Express-Supabase - Countries Visited
 
-A small Express app that saves people's favorite colors to a **Supabase** Postgres database using **Prisma**, then shows the results on a dashboard:
+A small Express app that records people's visited countries in a **Supabase** Postgres database using **Prisma**, then shows:
 
-- a **form** with a name and a rainbow color dropdown
-- a **bar chart** (Chart.js) counting each color
-- a **p5.js rainbow** whose bands get thicker as more people pick that color
-- a **list of people** with a Delete button for each one
+- a **form** for a person's name, age, countries visited, and places they want to visit
+- a **toggleable map** that switches between visited and wanted destinations
+- a **bar chart** of the five countries with the most visits
+- a **doughnut chart** grouping visited-country counts by continent, plus overall progress across the destination catalog
+- **badges** for country milestones, all-country completion, and continent visits
 
 ---
 
@@ -109,8 +110,7 @@ model Person {
 |---|---|
 | `GET /` | Shows the form |
 | `POST /` | Saves a person, then redirects to the dashboard |
-| `GET /dashboard` | Gets everyone, counts the colors, and shows the dashboard |
-| `POST /people/:id/delete` | Deletes one person, then redirects to the dashboard |
+| `GET /dashboard` | Counts country visits and shows the top-five and country-progress charts |
 
 ### Saving a person
 
@@ -146,76 +146,17 @@ for (let color of COLORS) {
 // [{ color: 'red', count: 3 }, { color: 'orange', count: 0 }, ...]
 ```
 
-### Deleting a person
-
-```javascript
-await prisma.person.deleteMany({
-  where: { id: Number(req.params.id) }
-});
-```
-
-> Values from the URL (`req.params.id`) are **strings**. Prisma needs a **number** for an `Int` field, so wrap it in `Number(...)`.
-
-The Delete button is a tiny form, because deleting should be a `POST`, not a link:
-
-```handlebars
-<form action="/people/{{this.id}}/delete" method="post">
-  <button type="submit">Delete</button>
-</form>
-```
-
 ---
 
 ## The Dashboard: `views/dashboard.hbs`
 
-### Passing data from Express to the browser
+The home page places the dashboard below the form and map, so scroll down to see the charts and badges. The map toggles between countries people have visited and countries they want to visit; clicking a country adds it to the currently selected list. The dashboard displays the five most visited countries in a vertical stacked bar chart grouped by age (0-17, 18-34, 35-64, and 65+). Its doughnut has one slice per continent plus a gray remainder for destinations not yet visited. Each continent's legend entry shows its visited/total count, and the summary shows overall progress across the destination catalog. Badges track first-country and 5, 10, 15, 25, 50, and 100-country milestones, visiting every destination, visiting each continent, and unlocking all seven continents.
 
-The route turns the counts into text with `JSON.stringify`:
+The country catalog provides the denominator, including Antarctica as a selectable destination, while the bundled `public/countries.geojson` supplies continent metadata through each feature's `CONTINENT` property. No continent column is needed in the database. Run `npm run db:seed` to add Antarctica to an existing database.
 
-```javascript
-res.render('dashboard', { countsJSON: JSON.stringify(counts) });
-```
+Hovering over a map country opens its facts panel; clicking it adds that country to the list selected by the map toggle. Capital, native name, languages, and currencies are bundled in `public/country-facts.json`, keyed by ISO alpha-3 country code; they do not need to be stored in Supabase. Population estimates come from the map data, and area is calculated approximately from map boundaries. The bundled reference facts are adapted from [Annexare Countries](https://github.com/annexare/Countries) under the MIT license; see [data/annexare-countries-MIT.txt](./data/annexare-countries-MIT.txt).
 
-The template drops that text into a `<script>`. Triple braces `{{{ }}}` print it as-is:
-
-```javascript
-let colorData = {{{countsJSON}}};
-```
-
-### Bar chart (Chart.js)
-
-```javascript
-new Chart(document.getElementById('barChart'), {
-  type: 'bar',
-  data: {
-    labels: colors,                       // ['red', 'orange', ...]
-    datasets: [{ data: counts, backgroundColor: colors }]
-  }
-});
-```
-
-### Rainbow (p5.js)
-
-Each color is an `arc` (half circle). The most popular color gets the thickest band (34px), and a color with no votes is a thin 4px line. Each band starts inside the one before it.
-
-```javascript
-let radius = 290; // outside edge of the rainbow
-
-for (let band of colorData) {
-  let thickness = 4 + (band.count / maxCount) * 30;
-
-  stroke(band.color);
-  strokeWeight(thickness);
-
-  let diameter = (radius - thickness / 2) * 2;
-  arc(width / 2, height, diameter, diameter, PI, TWO_PI);
-
-  radius = radius - thickness; // move inward for the next band
-}
-```
-
-- `arc(x, y, w, h, start, stop)`: `PI` to `TWO_PI` draws the top half of a circle
-- The stroke is centered on the arc line, so the code moves in by half the thickness to keep the bands from overlapping.
+Visited and wanted destinations are stored separately. Run `npm run db:migrate` after updating to create the wanted-country relation.
 
 ---
 

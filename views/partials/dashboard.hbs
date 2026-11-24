@@ -1,0 +1,247 @@
+<div class="dashboard-charts">
+  <section class="dashboard-chart">
+    <h2>Top 5 visited countries</h2>
+    <p id="no-country-visits" hidden>No country visits have been recorded yet.</p>
+    <canvas id="barChart" role="img" aria-label="Stacked vertical bar chart of the five most visited countries by age group"></canvas>
+  </section>
+
+  <section class="dashboard-chart">
+    <h2>Top 5 countries people want to visit</h2>
+    <p id="no-country-wants" hidden>No countries people want to visit have been recorded yet.</p>
+    <canvas id="wantedBarChart" role="img" aria-label="Stacked vertical bar chart of the five most wanted countries by age group"></canvas>
+  </section>
+
+  <section class="dashboard-chart dashboard-chart-wide">
+    <h2>Countries visited by continent</h2>
+    <p class="donut-progress">
+      <strong><span id="visited-country-count">0</span> / <span id="country-total">0</span></strong>
+      countries visited (<span id="visited-percentage">0</span>%)
+    </p>
+    <div class="donut-chart-wrap">
+      <canvas id="countryDonut" role="img" aria-label="Donut chart showing visited countries by continent and the countries not yet visited"></canvas>
+    </div>
+    <div id="donut-legend" class="donut-legend" aria-label="Visited countries by continent"></div>
+    <p id="chart-status" class="chart-status" role="status"></p>
+  </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+  (function () {
+    const countryData = {{{countryCountsJSON}}};
+    const ageGroupNames = ['0-17', '18-34', '35-64', '65+'];
+    const ageGroupColors = ['#87B2CC', '#6298BC', '#0B658D', '#144361'];
+    const wantedColors = ['#dfb989', '#c99467', '#b57852', '#925535'];
+    const topCountries = countryData
+      .filter(country => country.visits > 0)
+      .sort((a, b) => b.visits - a.visits || a.name.localeCompare(b.name))
+      .slice(0, 5);
+    const topWantedCountries = countryData
+      .filter(country => country.wants > 0)
+      .sort((a, b) => b.wants - a.wants || a.name.localeCompare(b.name))
+      .slice(0, 5);
+    const totalCountries = countryData.length;
+    const visitedCountries = countryData.filter(country => country.visits > 0).length;
+    const chartStatus = document.getElementById('chart-status');
+    window.countryGeographyPromise = fetch('/countries.geojson')
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error('Country map request failed with status ' + response.status);
+        }
+        return response.json();
+      });
+    const percentage = totalCountries
+      ? Math.round((visitedCountries / totalCountries) * 100)
+      : 0;
+    document.getElementById('visited-country-count').textContent = visitedCountries;
+    document.getElementById('country-total').textContent = totalCountries;
+    document.getElementById('visited-percentage').textContent = percentage;
+
+    if (!window.Chart) {
+      chartStatus.textContent = 'Charts could not be loaded. Check your connection and refresh.';
+      console.error('Chart.js could not be loaded from its CDN.');
+      return;
+    }
+
+    if (topCountries.length) {
+      new Chart(document.getElementById('barChart'), {
+        type: 'bar',
+        data: {
+          labels: topCountries.map(country => country.name),
+          datasets: ageGroupNames.map((ageGroup, index) => ({
+            label: ageGroup,
+            data: topCountries.map(country => country.ageGroups[ageGroup]),
+            backgroundColor: ageGroupColors[index],
+            borderColor: '#fbf8f0',
+            borderWidth: 1,
+            borderRadius: 3
+          }))
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'top' } },
+          scales: {
+            x: { stacked: true, grid: { display: false } },
+            y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } }
+          }
+        }
+      });
+    } else {
+      document.getElementById('barChart').hidden = true;
+      document.getElementById('no-country-visits').hidden = false;
+    }
+
+    if (topWantedCountries.length) {
+      new Chart(document.getElementById('wantedBarChart'), {
+        type: 'bar',
+        data: {
+          labels: topWantedCountries.map(country => country.name),
+          datasets: ageGroupNames.map((ageGroup, index) => ({
+            label: ageGroup,
+            data: topWantedCountries.map(country => country.wantedAgeGroups[ageGroup]),
+            backgroundColor: wantedColors[index],
+            borderColor: '#fbf8f0',
+            borderWidth: 1,
+            borderRadius: 3
+          }))
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'top' } },
+          scales: {
+            x: { stacked: true, grid: { display: false } },
+            y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } }
+          }
+        }
+      });
+    } else {
+      document.getElementById('wantedBarChart').hidden = true;
+      document.getElementById('no-country-wants').hidden = false;
+    }
+
+    const countryByCode = new Map(countryData.map(country => [country.code, country]));
+    const continentNames = [
+      'Africa',
+      'Asia',
+      'Europe',
+      'North America',
+      'Oceania',
+      'South America',
+      'Antarctica'
+    ];
+
+
+    const continentColors = {
+      Africa: '#071C34',
+      Asia: '#87B2CC',
+      Europe: '#6298BC',
+      'North America': '#144361',
+      Oceania: '#044A6E',
+      'South America': '#0B658D',
+      Antarctica: '#ACC8D1'
+    };
+
+    function featureCountryCode(feature) {
+      const properties = feature.properties || {};
+      const candidates = [properties.ISO_A3, properties.ADM0_A3, properties.SOV_A3];
+      return candidates.find(code => countryByCode.has(code)) || null;
+    }
+
+    window.countryGeographyPromise
+      .then(function (world) {
+        const continentByCode = new Map();
+        for (const feature of world.features) {
+          const code = featureCountryCode(feature);
+          const properties = feature.properties || {};
+          const continent = properties.CONTINENT === 'Seven seas (open ocean)'
+            ? properties.REGION_UN
+            : properties.CONTINENT;
+          if (code && continent) {
+            continentByCode.set(code, continent);
+          }
+        }
+
+        const continentTotals = new Map(
+          continentNames.map(continent => [continent, { visited: 0, total: 0 }])
+        );
+        for (const country of countryData) {
+          const continent = continentByCode.get(country.code);
+          if (!continentTotals.has(continent)) {
+            throw new Error('No supported continent found for ' + country.name + '.');
+          }
+          const totals = continentTotals.get(continent);
+          totals.total++;
+          if (country.visits > 0) {
+            totals.visited++;
+          }
+        }
+
+        const legend = document.getElementById('donut-legend');
+        for (const continent of continentNames) {
+          const totals = continentTotals.get(continent);
+          const item = document.createElement('span');
+          item.className = 'donut-legend-item';
+          const swatch = document.createElement('span');
+          swatch.className = 'donut-legend-swatch';
+          swatch.style.backgroundColor = continentColors[continent];
+          const label = document.createElement('span');
+          label.textContent = continent;
+          item.append(swatch, label);
+          legend.append(item);
+        }
+
+        const unvisitedCountries = totalCountries - visitedCountries;
+        const notVisitedItem = document.createElement('span');
+        notVisitedItem.className = 'donut-legend-item';
+        const notVisitedSwatch = document.createElement('span');
+        notVisitedSwatch.className = 'donut-legend-swatch';
+        notVisitedSwatch.style.backgroundColor = '#d5ddce';
+        const notVisitedLabel = document.createElement('span');
+        notVisitedLabel.textContent = 'Not yet visited (' + unvisitedCountries + ')';
+        notVisitedItem.append(notVisitedSwatch, notVisitedLabel);
+        legend.append(notVisitedItem);
+
+        new Chart(document.getElementById('countryDonut'), {
+          type: 'doughnut',
+          data: {
+            labels: continentNames.concat('Not yet visited'),
+            datasets: [{
+              data: continentNames
+                .map(continent => continentTotals.get(continent).visited)
+                .concat(unvisitedCountries),
+              backgroundColor: continentNames
+                .map(continent => continentColors[continent])
+                .concat('#d5ddce'),
+              borderColor: '#fbf8f0',
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '68%',
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: context => {
+                    if (context.dataIndex === continentNames.length) {
+                      return 'Not yet visited: ' + unvisitedCountries + ' countries';
+                    }
+                    const continent = continentNames[context.dataIndex];
+                    const totals = continentTotals.get(continent);
+                    return continent + ': ' + totals.visited + ' of ' + totals.total +
+                      ' countries visited';
+                  }
+                }
+              }
+            }
+          }
+        });
+      })
+      .catch(function (error) {
+        chartStatus.textContent = 'The country breakdown could not be loaded. Refresh the page to try again.';
+        console.error('Unable to build the country progress chart.', error);
+      });
+  })();
+</script>

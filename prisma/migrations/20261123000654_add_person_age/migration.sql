@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Person" ADD COLUMN "age" INTEGER NOT NULL DEFAULT 16;
